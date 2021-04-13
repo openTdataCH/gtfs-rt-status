@@ -49,8 +49,10 @@ class GTFS_DB_Controller {
     load_resources(completion) {
         var _a;
         (_a = this.progress_controller) === null || _a === void 0 ? void 0 : _a.setBusy('Loading Resources...');
-        // TODO - compute me
-        const gtfs_db_day_s = '2021-04-07';
+        let gtfsDBDay = new Date();
+        // const m = "2021-04-14 18:50:23".split(/\D/);
+        // gtfsDBDay = new Date(+m[0], +m[1] - 1, +m[2], +m[3], +m[4], +m[5]);
+        const gtfs_db_day_s = this.computeGTFS_DB_Day(gtfsDBDay);
         let gtfs_db_snapshot_base = 'https://opentdatach.github.io/assets-gtfs-static-snapshot';
         if (this.is_dev) {
             gtfs_db_snapshot_base = 'http://localhost/work/vasile/sbb/ojp-opendata/repos/openTdataCH--OJP-Showcase/apps/gtfs-rt-comparison-html/data/gtfs-static-snapshot';
@@ -82,6 +84,25 @@ class GTFS_DB_Controller {
             var _a;
             (_a = this.progress_controller) === null || _a === void 0 ? void 0 : _a.setError('ERROR loading resources');
         });
+    }
+    computeGTFS_DB_Day(date) {
+        // Wednesday (weekIdx 3) is the change
+        const datasetWeekdayIDChange = 3;
+        // Change time is at 14:00
+        const datasetHoursChange = 14;
+        let weekDayDiff = date.getDay() - datasetWeekdayIDChange;
+        if (weekDayDiff < 0) {
+            weekDayDiff += 7;
+        }
+        if (weekDayDiff === 0) {
+            if (date.getHours() < datasetHoursChange) {
+                weekDayDiff = 7;
+            }
+        }
+        const newDate = new Date(date.getTime());
+        newDate.setDate(date.getDate() - weekDayDiff);
+        const newDateS = Date_Helpers_1.Date_Helpers.formatDateYMDHIS(newDate);
+        return newDateS.substring(0, 10);
     }
     update_request_time() {
         this.request_datetime = new Date();
