@@ -2,6 +2,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const Date_Helpers_1 = require("./../helpers/Date_Helpers");
+const URL_Helpers_1 = require("../helpers/URL_Helpers");
 class GTFS_DB_Controller {
     constructor() {
         this.progress_controller = null;
@@ -9,18 +10,6 @@ class GTFS_DB_Controller {
         this.request_datetime = new Date();
         this.is_dev = false;
         this.use_mocked_data = false;
-        this.use_filtered_lookup = false;
-        this.is_dev = location.hostname === 'localhost';
-        if (this.is_dev) {
-            this.use_mocked_data = true;
-            this.use_filtered_lookup = true;
-            // this.use_mocked_data = false;
-            // this.use_filtered_lookup = false;
-        }
-        else {
-            this.use_mocked_data = false;
-            this.use_filtered_lookup = false;
-        }
         this.gtfs_query_btn = document.getElementById('gtfs_query_btn');
         this.gtfs_query_btn.addEventListener('click', () => {
             this.handle_gtfs_query_btn_click();
@@ -30,6 +19,7 @@ class GTFS_DB_Controller {
         this.query_interval_from_time_el = document.getElementById('interval-from-time');
         this.query_interval_to_time_el = document.getElementById('interval-to-time');
         this.gtfs_query_btn.disabled = true;
+        this.gtfs_query_base_address = 'https://www.m23.ch/customers/openTdataCH/gtfs-query';
         this.update_request_time();
     }
     update_query_inputs() {
@@ -49,92 +39,63 @@ class GTFS_DB_Controller {
     load_resources(completion) {
         var _a;
         (_a = this.progress_controller) === null || _a === void 0 ? void 0 : _a.setBusy('Loading Resources...');
-        let gtfsDBDay = new Date();
-        // const m = "2021-04-14 18:50:23".split(/\D/);
-        // gtfsDBDay = new Date(+m[0], +m[1] - 1, +m[2], +m[3], +m[4], +m[5]);
-        const gtfs_db_day_s = this.computeGTFS_DB_Day(gtfsDBDay);
-        let gtfs_db_snapshot_base = 'https://opentdatach.github.io/assets-gtfs-static-snapshot';
-        if (this.is_dev) {
-            gtfs_db_snapshot_base = 'http://localhost/work/vasile/sbb/ojp-opendata/repos/openTdataCH--OJP-Showcase/apps/gtfs-rt-comparison-html/data/gtfs-static-snapshot';
-        }
-        gtfs_db_snapshot_base += '/gtfs_' + gtfs_db_day_s;
-        const gtfs_db_lookups_url = gtfs_db_snapshot_base + '/db_lookups.json';
-        const request_day_s = this.query_request_day_el.value;
-        let gtfs_db_trips_url = gtfs_db_snapshot_base + '/trips_' + request_day_s + '.json';
-        if (this.use_filtered_lookup) {
-            console.log('WARNING - using filtered lookup');
-            gtfs_db_trips_url = gtfs_db_snapshot_base + '-FILTER/trips_' + request_day_s + '.json';
-        }
+        const date_f = Date_Helpers_1.Date_Helpers.formatDateYMDHIS(this.request_datetime);
+        const gtfs_query_lookups_qs_params = {
+            day: date_f.substring(0, 10),
+            hhmm: date_f.substring(11, 16).replace(':', ''),
+        };
+        const gtfs_query_lookups_address = this.gtfs_query_base_address + '/db_lookups?'
+            + URL_Helpers_1.URL_Helpers.dict_to_querystring(gtfs_query_lookups_qs_params);
         const resource_files = [
-            gtfs_db_lookups_url,
-            gtfs_db_trips_url,
+            gtfs_query_lookups_address,
         ];
         Promise.all(resource_files.map(resource_file => fetch(resource_file))).then(responses => Promise.all(responses.map(response => response.json()))).then(data_responses => {
-            var _a, _b, _c, _d, _e, _f;
+            var _a, _b, _c, _d, _e;
             (_a = this.gtfs_rt_reporter) === null || _a === void 0 ? void 0 : _a.setRequestDatetime(this.request_datetime);
             const data_response_lookups = data_responses[0];
             (_b = this.gtfs_rt_reporter) === null || _b === void 0 ? void 0 : _b.loadAgency(data_response_lookups.agency);
             (_c = this.gtfs_rt_reporter) === null || _c === void 0 ? void 0 : _c.loadStops(data_response_lookups.stops);
             (_d = this.gtfs_rt_reporter) === null || _d === void 0 ? void 0 : _d.loadRoutes(data_response_lookups.routes);
-            (_e = this.gtfs_rt_reporter) === null || _e === void 0 ? void 0 : _e.loadTrips(data_responses[1]);
             this.gtfs_query_btn.disabled = false;
-            (_f = this.progress_controller) === null || _f === void 0 ? void 0 : _f.setIdle();
+            (_e = this.progress_controller) === null || _e === void 0 ? void 0 : _e.setIdle();
             completion();
         }).catch(error => {
             var _a;
             (_a = this.progress_controller) === null || _a === void 0 ? void 0 : _a.setError('ERROR loading resources');
         });
     }
-    computeGTFS_DB_Day(date) {
-        // Wednesday (weekIdx 3) is the change
-        const datasetWeekdayIDChange = 3;
-        // Change time is at 14:00
-        const datasetHoursChange = 14;
-        let weekDayDiff = date.getDay() - datasetWeekdayIDChange;
-        if (weekDayDiff < 0) {
-            weekDayDiff += 7;
-        }
-        if (weekDayDiff === 0) {
-            if (date.getHours() < datasetHoursChange) {
-                weekDayDiff = 7;
-            }
-        }
-        const newDate = new Date(date.getTime());
-        newDate.setDate(date.getDate() - weekDayDiff);
-        const newDateS = Date_Helpers_1.Date_Helpers.formatDateYMDHIS(newDate);
-        return newDateS.substring(0, 10);
-    }
     update_request_time() {
         this.request_datetime = new Date();
-        // Override - TEST
-        if (this.use_mocked_data) {
-            let m = "2021-04-01 08:38:33".split(/\D/);
-            this.request_datetime = new Date(+m[0], +m[1] - 1, +m[2], +m[3], +m[4], +m[5]);
-            console.log('WARNING - using mocked data');
-            console.log('-- date ' + this.request_datetime);
-        }
         this.update_query_inputs();
     }
     handle_gtfs_query_btn_click() {
         var _a;
-        (_a = this.progress_controller) === null || _a === void 0 ? void 0 : _a.setBusy('Fetching GTFS-RT ...');
+        (_a = this.progress_controller) === null || _a === void 0 ? void 0 : _a.setBusy('Fetching GTFS static / RT ...');
         this.gtfs_query_btn.disabled = true;
         this.update_request_time();
         let gtfs_rt_url = 'https://www.webgis.ro/tmp/proxy-gtfsrt2020/gtfsrt2020';
-        if (this.is_dev) {
-            gtfs_rt_url = 'http://localhost/work/vasile/sbb/ojp-opendata/repos/openTdataCH--OJP-Showcase/apps/proxy-gtfsrt2020/gtfsrt2020';
-        }
-        if (this.use_mocked_data) {
-            gtfs_rt_url = 'http://localhost/work/vasile/sbb/ojp-opendata/repos/openTdataCH--OJP-Showcase/apps/gtfs-rt-comparison-html/data/GTFS_RT-2021-04-01-0838-1617259113.json';
-            console.log('MOCKED gtfs_rt_url = ' + gtfs_rt_url);
-        }
-        const gtfs_rt_promise = fetch(gtfs_rt_url);
-        Promise.all([gtfs_rt_promise]).then(responses => Promise.all(responses.map(response => response.json()))).then(data_responses => {
-            var _a, _b, _c;
+        const gtfs_query_active_trips_params = {
+            day: this.query_request_day_el.value,
+            hhmm: this.query_request_time_el.value.replace(':', ''),
+            from_hhmm: this.query_interval_from_time_el.value.replace(':', ''),
+            to_hhmm: this.query_interval_to_time_el.value.replace(':', ''),
+            filter_agency_ids: 'HAS_GTFS_RT',
+            parse_type: 'FLAT',
+        };
+        const gtfs_query_active_trips_address = this.gtfs_query_base_address + '/query_active_trips?'
+            + URL_Helpers_1.URL_Helpers.dict_to_querystring(gtfs_query_active_trips_params);
+        const resource_files = [
+            gtfs_rt_url,
+            gtfs_query_active_trips_address,
+        ];
+        Promise.all(resource_files.map(resource_file => fetch(resource_file))).then(responses => Promise.all(responses.map(response => response.json()))).then(data_responses => {
+            var _a, _b, _c, _d;
             this.gtfs_query_btn.disabled = false;
             (_a = this.progress_controller) === null || _a === void 0 ? void 0 : _a.setIdle();
             const gtfs_rt_response = data_responses[0];
             (_b = this.gtfs_rt_reporter) === null || _b === void 0 ? void 0 : _b.setRequestDatetime(this.request_datetime);
+            const data_response_active_trips = data_responses[1];
+            (_c = this.gtfs_rt_reporter) === null || _c === void 0 ? void 0 : _c.loadTrips(data_response_active_trips.rows);
             const request_interval_from_hhmm = this.query_interval_from_time_el.value;
             const request_interval_from_date = Date_Helpers_1.Date_Helpers.setHHMMToDate(this.request_datetime, request_interval_from_hhmm);
             const request_interval_to_hhmm = this.query_interval_to_time_el.value;
@@ -142,13 +103,13 @@ class GTFS_DB_Controller {
             if (request_interval_to_date < request_interval_from_date) {
                 request_interval_to_date.setDate(request_interval_to_date.getDate() + 1);
             }
-            (_c = this.gtfs_rt_reporter) === null || _c === void 0 ? void 0 : _c.loadGTFS_RT(gtfs_rt_response, request_interval_from_date, request_interval_to_date);
+            (_d = this.gtfs_rt_reporter) === null || _d === void 0 ? void 0 : _d.loadGTFS_RT(gtfs_rt_response, request_interval_from_date, request_interval_to_date);
         });
     }
 }
 exports.default = GTFS_DB_Controller;
 
-},{"./../helpers/Date_Helpers":5}],2:[function(require,module,exports){
+},{"../helpers/URL_Helpers":6,"./../helpers/Date_Helpers":5}],2:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const Date_Helpers_1 = require("../helpers/Date_Helpers");
@@ -160,6 +121,7 @@ class GTFS_RT_Reporter {
         this.map_gtfs_rt_trips = {};
         this.map_gtfs_all_trips = {};
         this.trips_by_agency = [];
+        this.gtfs_trips_stats = null;
         this.map_gtfs_agency = {};
         this.map_gtfs_routes = {};
         this.map_gtfs_stops = {};
@@ -239,7 +201,8 @@ class GTFS_RT_Reporter {
     loadTrips(response_json) {
         this.map_gtfs_all_trips = {};
         response_json.forEach(trip_condensed => {
-            this.map_gtfs_all_trips[trip_condensed.trip_id] = trip_condensed;
+            const trip_id = trip_condensed.trip_id;
+            this.map_gtfs_all_trips[trip_id] = trip_condensed;
         });
     }
     loadGTFS_RT(response_gtfs_rt, request_interval_from_date, request_interval_to_date) {
@@ -262,6 +225,7 @@ class GTFS_RT_Reporter {
     computeActiveTrips(request_interval_from_date, request_interval_to_date) {
         const trip_day = new Date(this.request_datetime);
         const trip_day_midnight = Date_Helpers_1.Date_Helpers.setHHMMToDate(trip_day, "00:00");
+        let trips_finished_count = 0;
         let map_active_trips = {};
         for (const trip_id in this.map_gtfs_all_trips) {
             const condensed_trip = this.map_gtfs_all_trips[trip_id];
@@ -269,13 +233,15 @@ class GTFS_RT_Reporter {
             const agency = this.map_gtfs_agency[route.agency_id];
             const trip = response_gtfs_static_query_1.GTFS_Static_Trip.initWithCondensedTrip(condensed_trip, agency, route, trip_day_midnight, this.map_gtfs_stops);
             // Test the trip to be inside [-0.5h .. +3h]
+            // This check is now(oct 2021) redundant, the trips are already filtered in the API.
             const is_active = trip.isActive(request_interval_from_date, request_interval_to_date);
             if (!is_active) {
                 continue;
             }
-            // Test the trip to be after NOW
+            // Test the trip to finish after NOW
             const is_finished = trip.isFinished(this.request_datetime);
             if (is_finished) {
+                trips_finished_count += 1;
                 continue;
             }
             if (trip_id in this.map_gtfs_rt_trips) {
@@ -292,6 +258,7 @@ class GTFS_RT_Reporter {
             }
             map_active_trips[agency.agency_id][route.route_short_name].push(trip);
         }
+        let missing_rt_trips_count = 0;
         let trips_by_agency = [];
         for (const agency_id in map_active_trips) {
             const agency = this.map_gtfs_agency[agency_id];
@@ -339,6 +306,7 @@ class GTFS_RT_Reporter {
                 });
                 agency_data.routes_data.push(route_data);
             }
+            missing_rt_trips_count += agency_data.stats.active_missing_rt_cno;
             // Sort by route name
             agency_data.routes_data = agency_data.routes_data.sort((a, b) => a.stats.active_missing_rt_cno < b.stats.active_missing_rt_cno ? 1 : -1);
             trips_by_agency.push(agency_data);
@@ -364,6 +332,12 @@ class GTFS_RT_Reporter {
             });
         });
         this.trips_by_agency = trips_by_agency;
+        this.gtfs_trips_stats = {
+            trips_count: Object.keys(this.map_gtfs_all_trips).length,
+            trips_finished_count: trips_finished_count,
+            agencies_count: trips_by_agency.length,
+            missing_rt_trips_count: missing_rt_trips_count,
+        };
     }
     updateGTFS_RTReport() {
         var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
@@ -452,8 +426,8 @@ class GTFS_RT_Reporter {
             }
         });
         let report_html = this.map_html_templates.gtfs_rt_report.slice();
-        report_html = report_html.replace('[NO_RT_NO]', gtfs_rt_issues_no.toString());
-        report_html = report_html.replace('[RT_NO]', gtfs_rt_trips_no.toString());
+        report_html = report_html.replace(/\[NO_RT_NO\]/g, gtfs_rt_issues_no.toString());
+        report_html = report_html.replace(/\[RT_NO\]/g, gtfs_rt_trips_no.toString());
         const agencyIDsWithoutGTFS_RT = Object.keys(mapAgencyWithoutGTFS_RT);
         let agencyIDsWithoutGTFS_RT_HTML = '';
         if (agencyIDsWithoutGTFS_RT.length > 0) {
@@ -502,6 +476,19 @@ class GTFS_RT_Reporter {
         const agencyHTML = agencyHTMLRows.join("\n");
         let gtfsStaticReportHTML = this.map_html_templates.gtfs_static_report.slice();
         gtfsStaticReportHTML = gtfsStaticReportHTML.replace('[GTFS_STATIC_REPORT_HTML]', agencyHTML);
+        if (this.gtfs_trips_stats) {
+            const stats = this.gtfs_trips_stats;
+            gtfsStaticReportHTML = gtfsStaticReportHTML.replace(/\[GTFS_STATIC_TRIPS_NO\]/g, stats.trips_count.toString());
+            gtfsStaticReportHTML = gtfsStaticReportHTML.replace(/\[TRIPS_ALREADY_FINISHED_NO\]/g, stats.trips_finished_count.toString());
+            gtfsStaticReportHTML = gtfsStaticReportHTML.replace(/\[GTFS_STATIC_AGENCIES_NO\]/g, stats.agencies_count.toString());
+            gtfsStaticReportHTML = gtfsStaticReportHTML.replace(/\[GTFS_STATIC_MISSING_RT_NO\]/g, stats.missing_rt_trips_count.toString());
+        }
+        else {
+            gtfsStaticReportHTML = gtfsStaticReportHTML.replace(/\[GTFS_STATIC_TRIPS_NO\]/g, 'N/A');
+            gtfsStaticReportHTML = gtfsStaticReportHTML.replace(/\[TRIPS_ALREADY_FINISHED_NO\]/g, 'N/A');
+            gtfsStaticReportHTML = gtfsStaticReportHTML.replace(/\[GTFS_STATIC_AGENCIES_NO\]/g, 'N/A');
+            gtfsStaticReportHTML = gtfsStaticReportHTML.replace(/\[GTFS_STATIC_MISSING_RT_NO\]/g, 'N/A');
+        }
         this.wrapperGTFS_StaticReportElement.innerHTML = gtfsStaticReportHTML;
     }
     computeAgencyHTML(agency_data) {
@@ -634,7 +621,7 @@ class GTFS_RT_Reporter {
 }
 exports.default = GTFS_RT_Reporter;
 
-},{"../helpers/DOM_Helpers":4,"../helpers/Date_Helpers":5,"./../models/response_gtfs_static_query":7}],3:[function(require,module,exports){
+},{"../helpers/DOM_Helpers":4,"../helpers/Date_Helpers":5,"./../models/response_gtfs_static_query":8}],3:[function(require,module,exports){
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const DOM_Helpers_1 = require("./../helpers/DOM_Helpers");
@@ -733,6 +720,25 @@ exports.Date_Helpers = Date_Helpers;
 
 },{}],6:[function(require,module,exports){
 "use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.URL_Helpers = void 0;
+class URL_Helpers {
+    static dict_to_querystring(qs_params_dict) {
+        var qsParts = [];
+        for (var key in qs_params_dict) {
+            if (qs_params_dict.hasOwnProperty(key)) {
+                const value = qs_params_dict[key];
+                const qsPart = encodeURIComponent(key) + '=' + encodeURIComponent(value);
+                qsParts.push(qsPart);
+            }
+        }
+        return qsParts.join('&');
+    }
+}
+exports.URL_Helpers = URL_Helpers;
+
+},{}],7:[function(require,module,exports){
+"use strict";
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -750,7 +756,7 @@ gtfs_db_controller.load_resources(() => {
     console.log('loaded');
 });
 
-},{"./controllers/GTFS_DB_Controller":1,"./controllers/GTFS_RT_Reporter":2,"./controllers/Progress_Controller":3}],7:[function(require,module,exports){
+},{"./controllers/GTFS_DB_Controller":1,"./controllers/GTFS_RT_Reporter":2,"./controllers/Progress_Controller":3}],8:[function(require,module,exports){
 "use strict";
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
@@ -850,7 +856,6 @@ class GTFS_Static_Trip {
                     return;
                 }
                 const is_first_stop = idx === 0;
-                const is_last_stop = idx === this.stop_times.length - 1;
                 if (is_first_stop) {
                     return;
                 }
@@ -889,7 +894,7 @@ class GTFS_Static_Trip {
 }
 exports.GTFS_Static_Trip = GTFS_Static_Trip;
 
-},{"./../helpers/Date_Helpers":5,"@mapbox/sphericalmercator":8}],8:[function(require,module,exports){
+},{"./../helpers/Date_Helpers":5,"@mapbox/sphericalmercator":9}],9:[function(require,module,exports){
 var SphericalMercator = (function(){
 
 // Closures including constants and other precalculated values.
@@ -1093,4 +1098,4 @@ if (typeof module !== 'undefined' && typeof exports !== 'undefined') {
     module.exports = exports = SphericalMercator;
 }
 
-},{}]},{},[6]);
+},{}]},{},[7]);
